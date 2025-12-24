@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>WEB原稿用紙エディタ（縦書き20×20マス + 禁則処理完全動作 + 外枠完璧 + A4印刷最適化）</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: "MS Mincho", "Hiragino Mincho ProN", serif; display: flex; height: 100vh; overflow: hidden; }
+        #input-area { width: 33.33%; background: #f0f0f0; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; border-right: 2px solid #ccc; position: relative; }
+        #title-input, #subtitle-input, #author-input { width: 100%; padding: 10px; font-size: 18px; margin-bottom: 10px; border: 1px solid #ddd; text-align: center; }
+        #subtitle-input { font-size: 16px; }
+        #author-input { font-size: 16px; }
+        #input-area textarea { flex: 1; resize: none; font-size: 18px; padding: 10px; border: 1px solid #ddd; white-space: pre-wrap; margin-bottom: 10px; }
+        #preview-area { width: 66.67%; background: #f8f8f8; padding: 40px 20px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 80px; align-items: center; }
+        .page {
+            width: 700px;
+            min-height: 1000px;
+            background: white;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 80px 60px;
+            box-sizing: border-box;
+            position: relative;
+            font-family: "YuMincho", "Yu Mincho", "MS Mincho", "Hiragino Mincho ProN", serif;
+        }
+        .title-area { position: absolute; top: 40px; right: 80px; font-size: 24px; writing-mode: horizontal-tb; text-align: center; width: 400px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+        .subtitle-area { position: absolute; top: 120px; right: 80px; font-size: 18px; writing-mode: horizontal-tb; text-align: center; width: 400px; }
+        .author-area { position: absolute; bottom: 40px; right: 80px; font-size: 16px; writing-mode: horizontal-tb; text-align: right; }
+        .grid-container {
+            height: calc(100% - 100px);
+            width: 100%;
+            margin-top: 100px;
+            box-sizing: border-box;
+            padding: 0 30px;
+            position: relative;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(20, 1fr);
+            grid-template-rows: repeat(20, 1fr);
+            height: 100%;
+            width: 100%;
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            position: relative;
+        }
+        .grid::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            box-shadow: 0 0 0 2px #008000 inset;
+            background:
+                repeating-linear-gradient(to right, #008000, #008000 1px, transparent 1px, transparent calc(100% / 20)),
+                repeating-linear-gradient(to bottom, #008000, #008000 1px, transparent 1px, transparent calc(100% / 20));
+            pointer-events: none;
+            z-index: 1;
+        }
+        .cell {
+            position: relative;
+            box-sizing: border-box;
+            z-index: 2;
+        }
+        .char {
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            position: absolute;
+            inset: 0;
+            margin: auto;
+            width: fit-content;
+            height: fit-content;
+            font-size: 18px;
+        }
+        .hanging {
+            position: absolute;
+            bottom: -0.4em;
+            right: -0.3em;
+            font-size: 14px;
+            z-index: 3;
+            pointer-events: none;
+        }
+        .page-number { position: absolute; bottom: 40px; left: 40px; font-size: 14px; writing-mode: horizontal-tb; }
+        .controls { margin-bottom: 10px; text-align: center; }
+        button { padding: 8px 16px; margin: 0 5px; font-size: 16px; }
+        #bottom-controls {
+            position: sticky;
+            bottom: 0;
+            background: #f0f0f0;
+            padding: 10px;
+            border-top: 1px solid #ccc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 16px;
+            z-index: 10;
+        }
+        #char-count { color: #0000ff; font-weight: bold; }
+        #page-jump-group { display: flex; align-items: center; gap: 10px; }
+        #page-jump-input { width: 60px; padding: 4px; font-size: 16px; text-align: center; }
+        #page-jump-btn { padding: 4px 12px; font-size: 14px; }
+        #total-pages { font-weight: bold; }
+        @media print {
+            body, html { margin: 0; padding: 0; height: auto; }
+            #input-area, #bottom-controls { display: none; }
+            #preview-area { width: 100%; padding: 0; background: white; display: block; }
+            .page { width: 210mm; height: 297mm; padding: 15mm 12mm; box-shadow: none; page-break-after: always; margin: 0 auto; }
+            .title-area { top: 10mm; right: 15mm; font-size: 20px; }
+            .subtitle-area { top: 30mm; right: 15mm; font-size: 16px; }
+            .author-area { bottom: 10mm; right: 15mm; font-size: 14px; }
+            .grid-container { height: calc(100% - 30mm); margin-top: 30mm; padding: 0 15mm; }
+            .page-number { bottom: 10mm; left: 12mm; }
+            .hanging { font-size: 12px; bottom: -0.3em; right: -0.2em; }
+            @page { size: A4 portrait; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="input-area">
+        <div class="controls">
+            <button onclick="clearText()">クリア（保存も削除）</button>
+            <button onclick="window.print()">印刷</button>
+        </div>
+        <input type="text" id="title-input" placeholder="タイトルを入力してください（全ページに反映・自動保存）" value="">
+        <input type="text" id="subtitle-input" placeholder="サブタイトル（任意）" value="">
+        <input type="text" id="author-input" placeholder="著者名（任意）" value="">
+        <textarea id="input-text" placeholder="ここに入力してください。20文字ちょうどで「、」や「。」を入れると禁則処理が確認できます。"></textarea>
+        <div id="bottom-controls">
+            <div id="char-count">現在の文字数: 0</div>
+            <div id="page-jump-group">
+                ページ: <input type="number" id="page-jump-input" min="1">
+                <span>/ <span id="total-pages">1</span></span>
+                <button id="page-jump-btn">ジャンプ</button>
+            </div>
+        </div>
+    </div>
+    <div id="preview-area"></div>
+    <script>
+        const titleInput = document.getElementById('title-input');
+        const subtitleInput = document.getElementById('subtitle-input');
+        const authorInput = document.getElementById('author-input');
+        const inputText = document.getElementById('input-text');
+        const charCount = document.getElementById('char-count');
+        const pagesContainer = document.getElementById('preview-area');
+        const pageJumpInput = document.getElementById('page-jump-input');
+        const totalPagesSpan = document.getElementById('total-pages');
+        const pageJumpBtn = document.getElementById('page-jump-btn');
+        const STORAGE_KEY_TITLE = 'genkoyoshi_title';
+        const STORAGE_KEY_SUBTITLE = 'genkoyoshi_subtitle';
+        const STORAGE_KEY_AUTHOR = 'genkoyoshi_author';
+        const STORAGE_KEY_TEXT = 'genkoyoshi_text';
+        const KINSOKU_HANGING = '。、』」）］｝〉》】〟〆';
+        let previousLineCount = 0;
+        let currentPageCount = 1;
+        let lastScrolledPageIndex = 0; // 最後に自動スクロールしたページ（0-based）
+
+        function updateCharCount() {
+            const count = inputText.value.length;
+            charCount.textContent = `現在の文字数: ${count}`;
+        }
+
+        function saveData() {
+            localStorage.setItem(STORAGE_KEY_TITLE, titleInput.value);
+            localStorage.setItem(STORAGE_KEY_SUBTITLE, subtitleInput.value);
+            localStorage.setItem(STORAGE_KEY_AUTHOR, authorInput.value);
+            localStorage.setItem(STORAGE_KEY_TEXT, inputText.value);
+        }
+
+        function loadData() {
+            titleInput.value = localStorage.getItem(STORAGE_KEY_TITLE) || '';
+            subtitleInput.value = localStorage.getItem(STORAGE_KEY_SUBTITLE) || '';
+            authorInput.value = localStorage.getItem(STORAGE_KEY_AUTHOR) || '';
+            inputText.value = localStorage.getItem(STORAGE_KEY_TEXT) || '';
+            updateCharCount();
+            renderPaper();
+        }
+
+        function updatePageJumpInput() {
+            let currentPageIndex = 0;
+            let maxVisibleRatio = 0;
+
+            for (let i = 0; i < pagesContainer.children.length; i++) {
+                const page = pagesContainer.children[i];
+                const rect = page.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+
+                const visibleHeight = Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
+                const visibleRatio = visibleHeight > 0 ? visibleHeight / rect.height : 0;
+
+                if (visibleRatio > maxVisibleRatio) {
+                    maxVisibleRatio = visibleRatio;
+                    currentPageIndex = i;
+                }
+            }
+
+            pageJumpInput.value = currentPageIndex + 1;
+            // lastScrolledPageIndex は自動スクロール用なのでここでは更新しない
+        }
+
+        function renderPaper() {
+            const rawText = inputText.value;
+            const title = titleInput.value || '（無題）';
+            const subtitle = subtitleInput.value || '';
+            const author = authorInput.value || '';
+
+            pagesContainer.innerHTML = '';
+
+            const inputLines = rawText.split('\n');
+            const allLines = [];
+            const allHanging = [];
+
+            inputLines.forEach(line => {
+                let pos = 0;
+                while (pos < line.length) {
+                    let end = Math.min(pos + 20, line.length);
+                    let segment = line.substring(pos, end);
+                    let hanging = '';
+                    if (end < line.length && KINSOKU_HANGING.includes(line.charAt(end))) {
+                        segment = line.substring(pos, end - 1);
+                        hanging = line.charAt(end);
+                        end--;
+                    }
+                    allLines.push(segment);
+                    allHanging.push(hanging);
+                    pos = end;
+                }
+                if (line === '' && pos === 0) {
+                    allLines.push('');
+                    allHanging.push('');
+                }
+            });
+
+            const totalLines = allLines.length || 1;
+            const rowsPerPage = 20;
+            currentPageCount = Math.max(1, Math.ceil(totalLines / rowsPerPage));
+            totalPagesSpan.textContent = currentPageCount;
+
+            for (let p = 0; p < currentPageCount; p++) {
+                const page = document.createElement('div');
+                page.className = 'page';
+
+                const titleArea = document.createElement('div');
+                titleArea.className = 'title-area';
+                titleArea.textContent = title;
+                page.appendChild(titleArea);
+
+                if (subtitle) {
+                    const subtitleArea = document.createElement('div');
+                    subtitleArea.className = 'subtitle-area';
+                    subtitleArea.textContent = subtitle;
+                    page.appendChild(subtitleArea);
+                }
+
+                if (author) {
+                    const authorArea = document.createElement('div');
+                    authorArea.className = 'author-area';
+                    authorArea.textContent = author;
+                    page.appendChild(authorArea);
+                }
+
+                const gridContainer = document.createElement('div');
+                gridContainer.className = 'grid-container';
+                const grid = document.createElement('div');
+                grid.className = 'grid';
+
+                const startRow = p * rowsPerPage;
+                for (let row = 0; row < rowsPerPage; row++) {
+                    const lineIndex = startRow + row;
+                    const lineStr = lineIndex < allLines.length ? allLines[lineIndex] : '';
+                    const hanging = lineIndex < allHanging.length ? allHanging[lineIndex] : '';
+
+                    for (let col = 0; col < 20; col++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+
+                        if (col < lineStr.length) {
+                            const charSpan = document.createElement('span');
+                            charSpan.className = 'char';
+                            charSpan.textContent = lineStr[col];
+                            cell.appendChild(charSpan);
+                        }
+
+                        if (col === 19 && hanging) {
+                            const hangingSpan = document.createElement('span');
+                            hangingSpan.className = 'hanging';
+                            hangingSpan.textContent = hanging;
+                            cell.appendChild(hangingSpan);
+                        }
+
+                        grid.appendChild(cell);
+                    }
+                }
+
+                gridContainer.appendChild(grid);
+                page.appendChild(gridContainer);
+
+                const pageNum = document.createElement('div');
+                pageNum.className = 'page-number';
+                pageNum.textContent = currentPageCount === 1 ? '1' : `${p + 1}/${currentPageCount}`;
+                page.appendChild(pageNum);
+
+                pagesContainer.appendChild(page);
+            }
+
+            // ★修正：1ページ目が完全に埋まるまで（20行まで）はスクロールしない★
+            const totalLinesNow = allLines.length;
+            const currentEditingPageIndex = Math.ceil(totalLinesNow / rowsPerPage) - 1; // 0-based（21行目入力で1になる）
+
+            // 現在編集中のページが前回の自動スクロールページより大きくなったときのみスクロール
+            if (currentEditingPageIndex > lastScrolledPageIndex && pagesContainer.children[currentEditingPageIndex]) {
+                requestAnimationFrame(() => {
+                    pagesContainer.children[currentEditingPageIndex].scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                });
+                lastScrolledPageIndex = currentEditingPageIndex;
+            }
+
+            // 初回ロード時や1ページ目に戻ったときは1ページ目を表示
+            if (totalLinesNow <= rowsPerPage && lastScrolledPageIndex !== 0) {
+                if (pagesContainer.children[0]) {
+                    pagesContainer.children[0].scrollIntoView({ behavior: 'auto', block: 'start' });
+                }
+                lastScrolledPageIndex = 0;
+            }
+
+            // 現在の表示ページをジャンプ入力欄に反映
+            updatePageJumpInput();
+
+            previousLineCount = totalLinesNow;
+        }
+
+        function jumpToPage() {
+            const target = parseInt(pageJumpInput.value, 10);
+            if (isNaN(target) || target < 1 || target > currentPageCount) {
+                updatePageJumpInput();
+                return;
+            }
+
+            const targetPage = pagesContainer.children[target - 1];
+            if (targetPage) {
+                targetPage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                pageJumpInput.value = target;
+                // 手動ジャンプ時は自動スクロールの基準を更新（戻っても問題ないように）
+                lastScrolledPageIndex = target - 1;
+            }
+        }
+
+        pageJumpBtn.addEventListener('click', jumpToPage);
+        pageJumpInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') jumpToPage();
+        });
+
+        // 手動スクロール時もページ番号をリアルタイム更新
+        pagesContainer.addEventListener('scroll', () => {
+            clearTimeout(window.pageJumpTimeout);
+            window.pageJumpTimeout = setTimeout(updatePageJumpInput, 150);
+        });
+
+        titleInput.addEventListener('input', () => { saveData(); renderPaper(); });
+        subtitleInput.addEventListener('input', () => { saveData(); renderPaper(); });
+        authorInput.addEventListener('input', () => { saveData(); renderPaper(); });
+        inputText.addEventListener('input', () => { saveData(); updateCharCount(); renderPaper(); });
+
+        function clearText() {
+            if (confirm('本当にクリアしますか？保存データも削除されます。')) {
+                titleInput.value = '';
+                subtitleInput.value = '';
+                authorInput.value = '';
+                inputText.value = '';
+                localStorage.clear();
+                lastScrolledPageIndex = 0;
+                updateCharCount();
+                renderPaper();
+            }
+        }
+
+        window.addEventListener('load', () => {
+            loadData();
+            lastScrolledPageIndex = 0;
+        });
+    </script>
+</body>
+</html>
