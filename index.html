@@ -2,379 +2,869 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>WEB原稿用紙エディタ（縦書き20×20マス + 禁則処理完全動作 + 外枠完璧 + A4印刷最適化）</title>
+    <title>原稿用紙エディタ</title>
     <style>
-        body { margin: 0; padding: 0; font-family: "MS Mincho", "Hiragino Mincho ProN", serif; display: flex; height: 100vh; overflow: hidden; }
-        #input-area { width: 33.33%; background: #f0f0f0; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; border-right: 2px solid #ccc; position: relative; }
-        #title-input, #subtitle-input, #author-input { width: 100%; padding: 10px; font-size: 18px; margin-bottom: 10px; border: 1px solid #ddd; text-align: center; }
-        #subtitle-input { font-size: 16px; }
-        #author-input { font-size: 16px; }
-        #input-area textarea { flex: 1; resize: none; font-size: 18px; padding: 10px; border: 1px solid #ddd; white-space: pre-wrap; margin-bottom: 10px; }
-        #preview-area { width: 66.67%; background: #f8f8f8; padding: 40px 20px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 80px; align-items: center; }
-        .page {
-            width: 700px;
-            min-height: 1000px;
-            background: white;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            padding: 80px 60px;
-            box-sizing: border-box;
-            position: relative;
-            font-family: "YuMincho", "Yu Mincho", "MS Mincho", "Hiragino Mincho ProN", serif;
-        }
-        .title-area { position: absolute; top: 40px; right: 80px; font-size: 24px; writing-mode: horizontal-tb; text-align: center; width: 400px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-        .subtitle-area { position: absolute; top: 120px; right: 80px; font-size: 18px; writing-mode: horizontal-tb; text-align: center; width: 400px; }
-        .author-area { position: absolute; bottom: 40px; right: 80px; font-size: 16px; writing-mode: horizontal-tb; text-align: right; }
-        .grid-container {
-            height: calc(100% - 100px);
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "MS Mincho", "Hiragino Mincho ProN", serif; height: 100vh; overflow: hidden; }
+        
+        /* スプラッシュ画面 */
+        #splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
-            margin-top: 100px;
-            box-sizing: border-box;
-            padding: 0 30px;
-            position: relative;
-        }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(20, 1fr);
-            grid-template-rows: repeat(20, 1fr);
             height: 100%;
-            width: 100%;
-            writing-mode: vertical-rl;
-            text-orientation: upright;
-            position: relative;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
         }
-        .grid::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            box-shadow: 0 0 0 2px #008000 inset;
-            background:
-                repeating-linear-gradient(to right, #008000, #008000 1px, transparent 1px, transparent calc(100% / 20)),
-                repeating-linear-gradient(to bottom, #008000, #008000 1px, transparent 1px, transparent calc(100% / 20));
-            pointer-events: none;
-            z-index: 1;
+        #splash-content {
+            background: white;
+            padding: 60px 80px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 600px;
         }
-        .cell {
-            position: relative;
-            box-sizing: border-box;
-            z-index: 2;
+        #splash-content h1 {
+            font-size: 32px;
+            color: #333;
+            margin-bottom: 30px;
+            font-weight: bold;
         }
-        .char {
-            writing-mode: vertical-rl;
-            text-orientation: upright;
-            position: absolute;
-            inset: 0;
-            margin: auto;
-            width: fit-content;
-            height: fit-content;
+        #splash-content p {
             font-size: 18px;
+            color: #555;
+            line-height: 1.8;
+            margin-bottom: 15px;
         }
-        .hanging {
-            position: absolute;
-            bottom: -0.4em;
-            right: -0.3em;
-            font-size: 14px;
-            z-index: 3;
-            pointer-events: none;
+        #start-button {
+            margin-top: 40px;
+            padding: 15px 50px;
+            font-size: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
         }
-        .page-number { position: absolute; bottom: 40px; left: 40px; font-size: 14px; writing-mode: horizontal-tb; }
-        .controls { margin-bottom: 10px; text-align: center; }
-        button { padding: 8px 16px; margin: 0 5px; font-size: 16px; }
-        #bottom-controls {
-            position: sticky;
-            bottom: 0;
-            background: #f0f0f0;
+        #start-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        /* メインアプリ */
+        #main-app {
+            display: none;
+            height: 100vh;
+        }
+        
+        /* 入力エリア */
+        #input-area {
+            width: 33.333%;
+            background: #f5f5f5;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            border-right: 2px solid #ccc;
+            overflow: hidden;
+            float: left;
+            height: 100vh;
+        }
+        
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            background: #667eea;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #5568d3;
+        }
+        
+        .input-field {
+            width: 100%;
             padding: 10px;
-            border-top: 1px solid #ccc;
+            margin-bottom: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        #text-input {
+            flex: 1;
+            resize: none;
+            font-size: 18px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-family: "MS Mincho", "Hiragino Mincho ProN", serif;
+            overflow-y: auto;
+        }
+        
+        #bottom-info {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 16px;
-            z-index: 10;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            margin-top: 10px;
         }
-        #char-count { color: #0000ff; font-weight: bold; }
-        #page-jump-group { display: flex; align-items: center; gap: 10px; }
-        #page-jump-input { width: 60px; padding: 4px; font-size: 16px; text-align: center; }
-        #page-jump-btn { padding: 4px 12px; font-size: 14px; }
-        #total-pages { font-weight: bold; }
+        
+        #char-count {
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        #page-jump {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        #page-jump input {
+            width: 50px;
+            padding: 5px;
+            text-align: center;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        
+        #page-jump button {
+            padding: 5px 15px;
+            font-size: 14px;
+        }
+        
+        /* プレビューエリア */
+        #preview-area {
+            width: 66.666%;
+            background: #e0e0e0;
+            padding: 60px 20px;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            float: left;
+            height: 100vh;
+        }
+        
+        #virtual-container {
+            position: relative;
+            margin: 0 auto;
+        }
+        
+        #virtual-content {
+            position: relative;
+        }
+        
+        .page {
+            width: 644px;
+            height: 920px;
+            background: white;
+            margin: 0 auto 80px;
+            padding: 55px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            position: relative;
+        }
+        
+        .page-header {
+            position: absolute;
+            top: 10px;
+            right: 55px;
+            text-align: right;
+        }
+        
+        .page-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #000000 !important;
+        }
+        
+        .page-subtitle {
+            font-size: 16px;
+            color: #000000 !important;
+        }
+        
+        .page-footer {
+            position: absolute;
+            bottom: 70px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 55px;
+        }
+        
+        .page-author {
+            font-size: 14px;
+        }
+        
+        .page-number {
+            font-size: 14px;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .grid-container {
+            width: 100%;
+            height: calc(100% - 80px);
+            margin-top: 20px;
+            position: relative;
+        }
+        
+        .grid-wrapper {
+            display: table;
+            width: 100%;
+            height: 100%;
+            border-collapse: collapse;
+            direction: rtl;
+        }
+        
+        .grid-row {
+            display: table-row;
+            height: 5%;
+            direction: ltr;
+        }
+        
+        .grid-cell {
+            display: table-cell;
+            width: 4.76%;
+            border: 1px solid #90EE90;
+            position: relative;
+            vertical-align: middle;
+            text-align: center;
+        }
+        
+        .grid-cell.empty-column {
+            border: none;
+            background: white;
+            position: relative;
+        }
+        
+        .grid-cell.empty-column.first-row {
+            border-top: 2px solid #008000;
+        }
+        
+        .grid-cell.empty-column.last-row {
+            border-bottom: 2px solid #008000;
+        }
+        
+        .bracket-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+        }
+        
+        .bracket-top {
+            font-size: 24px;
+            color: #008000;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .bracket-bottom {
+            font-size: 24px;
+            color: #008000;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .char {
+            font-size: 16.56px;
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            display: inline-block;
+        }
+        
+        .ruby-container {
+            writing-mode: vertical-rl;
+            text-orientation: upright;
+            display: inline-block;
+        }
+        
+        .ruby-text {
+            font-size: 10px;
+            display: inline;
+        }
+        
+        .hanging {
+            position: absolute;
+            bottom: -8px;
+            right: -8px;
+            font-size: 14px;
+        }
+        
         @media print {
-            body, html { margin: 0; padding: 0; height: auto; }
-            #input-area, #bottom-controls { display: none; }
-            #preview-area { width: 100%; padding: 0; background: white; display: block; }
-            .page { width: 210mm; height: 297mm; padding: 15mm 12mm; box-shadow: none; page-break-after: always; margin: 0 auto; }
-            .title-area { top: 10mm; right: 15mm; font-size: 20px; }
-            .subtitle-area { top: 30mm; right: 15mm; font-size: 16px; }
-            .author-area { bottom: 10mm; right: 15mm; font-size: 14px; }
-            .grid-container { height: calc(100% - 30mm); margin-top: 30mm; padding: 0 15mm; }
-            .page-number { bottom: 10mm; left: 12mm; }
-            .hanging { font-size: 12px; bottom: -0.3em; right: -0.2em; }
+            #input-area, #splash-screen { display: none; }
+            #preview-area { width: 100%; padding: 0; background: white; overflow: visible; }
+            .page { 
+                page-break-after: always; 
+                margin: 0 auto; 
+                box-shadow: none;
+                width: 210mm;
+                height: 297mm;
+                padding: 60px 60px;
+            }
             @page { size: A4 portrait; margin: 0; }
         }
     </style>
 </head>
 <body>
-    <div id="input-area">
-        <div class="controls">
-            <button onclick="clearText()">クリア（保存も削除）</button>
-            <button onclick="window.print()">印刷</button>
+    <!-- スプラッシュ画面 -->
+    <div id="splash-screen">
+        <div id="splash-content">
+            <h1>原稿用紙エディタ</h1>
+            <p>このエディタはベータ版です。動作がおかしくなることがあります</p>
+            <p>入力内容はローカルストレージのみに記録されます</p>
+            <p>機密的文章は入力しないでください</p>
+            <p style="margin-top: 20px; color: #667eea; font-weight: bold;">プレビュー画面は自動でスクロールしません<br>前ページ先頭へ・次ページ先頭へボタンで移動してください</p>
+            <button id="start-button">入力を開始する</button>
         </div>
-        <input type="text" id="title-input" placeholder="タイトルを入力してください（全ページに反映・自動保存）" value="">
-        <input type="text" id="subtitle-input" placeholder="サブタイトル（任意）" value="">
-        <input type="text" id="author-input" placeholder="著者名（任意）" value="">
-        <textarea id="input-text" placeholder="ここに入力してください。20文字ちょうどで「、」や「。」を入れると禁則処理が確認できます。"></textarea>
-        <div id="bottom-controls">
-            <div id="char-count">現在の文字数: 0</div>
-            <div id="page-jump-group">
-                ページ: <input type="number" id="page-jump-input" min="1">
-                <span>/ <span id="total-pages">1</span></span>
-                <button id="page-jump-btn">ジャンプ</button>
+    </div>
+
+    <!-- メインアプリ -->
+    <div id="main-app">
+        <div id="input-area">
+            <div class="button-row">
+                <button onclick="clearAll()">クリア（保存も削除）</button>
+                <button onclick="window.print()">印刷</button>
+                <button onclick="jumpToPrevPage()">前ページ先頭へ</button>
+                <button onclick="jumpToNextPage()">次ページ先頭へ</button>
+                <button onclick="createNewPage()">新ページ作成</button>
+            </div>
+            
+            <input type="text" class="input-field" id="title-input" placeholder="タイトル名入力">
+            <input type="text" class="input-field" id="subtitle-input" placeholder="サブタイトル">
+            <input type="text" class="input-field" id="author-input" placeholder="作者名">
+            
+            <textarea id="text-input" placeholder="ここに本文を入力してください。"></textarea>
+            
+            <div id="bottom-info">
+                <div id="char-count">文字数: 0</div>
+                <div id="page-jump">
+                    <span id="current-page-display">1</span> / <span id="total-pages">1</span>
+                    <input type="number" id="jump-input" min="1" value="1">
+                    <button onclick="jumpToPage()">ジャンプ</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="preview-area">
+            <div id="virtual-container">
+                <div id="virtual-content"></div>
             </div>
         </div>
     </div>
-    <div id="preview-area"></div>
+
     <script>
+        const STORAGE_KEYS = {
+            title: 'editor_title',
+            subtitle: 'editor_subtitle',
+            author: 'editor_author',
+            text: 'editor_text'
+        };
+        
+        const KINSOKU_HANGING = '。、』」）］｝〉》】';
+        const ROWS_PER_PAGE = 20;
+        const COLS_PER_PAGE = 20;
+        const PAGE_HEIGHT = 1120;
+        
+        let allPagesData = [];
+        let currentPageCount = 1;
+        let renderedPages = new Map();
+        let allowAutoScroll = false;
+        
+        // DOM要素
         const titleInput = document.getElementById('title-input');
         const subtitleInput = document.getElementById('subtitle-input');
         const authorInput = document.getElementById('author-input');
-        const inputText = document.getElementById('input-text');
+        const textInput = document.getElementById('text-input');
         const charCount = document.getElementById('char-count');
-        const pagesContainer = document.getElementById('preview-area');
-        const pageJumpInput = document.getElementById('page-jump-input');
+        const previewArea = document.getElementById('preview-area');
+        const virtualContent = document.getElementById('virtual-content');
+        const currentPageDisplay = document.getElementById('current-page-display');
         const totalPagesSpan = document.getElementById('total-pages');
-        const pageJumpBtn = document.getElementById('page-jump-btn');
-        const STORAGE_KEY_TITLE = 'genkoyoshi_title';
-        const STORAGE_KEY_SUBTITLE = 'genkoyoshi_subtitle';
-        const STORAGE_KEY_AUTHOR = 'genkoyoshi_author';
-        const STORAGE_KEY_TEXT = 'genkoyoshi_text';
-        const KINSOKU_HANGING = '。、』」）］｝〉》】〟〆';
-        let previousLineCount = 0;
-        let currentPageCount = 1;
-        let lastScrolledPageIndex = 0; // 最後に自動スクロールしたページ（0-based）
-
-        function updateCharCount() {
-            const count = inputText.value.length;
-            charCount.textContent = `現在の文字数: ${count}`;
-        }
-
+        const jumpInput = document.getElementById('jump-input');
+        
+        // スプラッシュ画面
+        document.getElementById('start-button').addEventListener('click', () => {
+            document.getElementById('splash-screen').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
+            loadData();
+        });
+        
+        // データ保存
         function saveData() {
-            localStorage.setItem(STORAGE_KEY_TITLE, titleInput.value);
-            localStorage.setItem(STORAGE_KEY_SUBTITLE, subtitleInput.value);
-            localStorage.setItem(STORAGE_KEY_AUTHOR, authorInput.value);
-            localStorage.setItem(STORAGE_KEY_TEXT, inputText.value);
+            localStorage.setItem(STORAGE_KEYS.title, titleInput.value);
+            localStorage.setItem(STORAGE_KEYS.subtitle, subtitleInput.value);
+            localStorage.setItem(STORAGE_KEYS.author, authorInput.value);
+            localStorage.setItem(STORAGE_KEYS.text, textInput.value);
         }
-
+        
+        // データ読み込み
         function loadData() {
-            titleInput.value = localStorage.getItem(STORAGE_KEY_TITLE) || '';
-            subtitleInput.value = localStorage.getItem(STORAGE_KEY_SUBTITLE) || '';
-            authorInput.value = localStorage.getItem(STORAGE_KEY_AUTHOR) || '';
-            inputText.value = localStorage.getItem(STORAGE_KEY_TEXT) || '';
+            titleInput.value = localStorage.getItem(STORAGE_KEYS.title) || '';
+            subtitleInput.value = localStorage.getItem(STORAGE_KEYS.subtitle) || '';
+            authorInput.value = localStorage.getItem(STORAGE_KEYS.author) || '';
+            textInput.value = localStorage.getItem(STORAGE_KEYS.text) || '';
             updateCharCount();
-            renderPaper();
+            renderPages();
         }
-
-        function updatePageJumpInput() {
-            let currentPageIndex = 0;
-            let maxVisibleRatio = 0;
-
-            for (let i = 0; i < pagesContainer.children.length; i++) {
-                const page = pagesContainer.children[i];
-                const rect = page.getBoundingClientRect();
-                const viewportHeight = window.innerHeight;
-
-                const visibleHeight = Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
-                const visibleRatio = visibleHeight > 0 ? visibleHeight / rect.height : 0;
-
-                if (visibleRatio > maxVisibleRatio) {
-                    maxVisibleRatio = visibleRatio;
-                    currentPageIndex = i;
-                }
-            }
-
-            pageJumpInput.value = currentPageIndex + 1;
-            // lastScrolledPageIndex は自動スクロール用なのでここでは更新しない
-        }
-
-        function renderPaper() {
-            const rawText = inputText.value;
-            const title = titleInput.value || '（無題）';
-            const subtitle = subtitleInput.value || '';
-            const author = authorInput.value || '';
-
-            pagesContainer.innerHTML = '';
-
-            const inputLines = rawText.split('\n');
-            const allLines = [];
-            const allHanging = [];
-
-            inputLines.forEach(line => {
-                let pos = 0;
-                while (pos < line.length) {
-                    let end = Math.min(pos + 20, line.length);
-                    let segment = line.substring(pos, end);
-                    let hanging = '';
-                    if (end < line.length && KINSOKU_HANGING.includes(line.charAt(end))) {
-                        segment = line.substring(pos, end - 1);
-                        hanging = line.charAt(end);
-                        end--;
-                    }
-                    allLines.push(segment);
-                    allHanging.push(hanging);
-                    pos = end;
-                }
-                if (line === '' && pos === 0) {
-                    allLines.push('');
-                    allHanging.push('');
-                }
-            });
-
-            const totalLines = allLines.length || 1;
-            const rowsPerPage = 20;
-            currentPageCount = Math.max(1, Math.ceil(totalLines / rowsPerPage));
-            totalPagesSpan.textContent = currentPageCount;
-
-            for (let p = 0; p < currentPageCount; p++) {
-                const page = document.createElement('div');
-                page.className = 'page';
-
-                const titleArea = document.createElement('div');
-                titleArea.className = 'title-area';
-                titleArea.textContent = title;
-                page.appendChild(titleArea);
-
-                if (subtitle) {
-                    const subtitleArea = document.createElement('div');
-                    subtitleArea.className = 'subtitle-area';
-                    subtitleArea.textContent = subtitle;
-                    page.appendChild(subtitleArea);
-                }
-
-                if (author) {
-                    const authorArea = document.createElement('div');
-                    authorArea.className = 'author-area';
-                    authorArea.textContent = author;
-                    page.appendChild(authorArea);
-                }
-
-                const gridContainer = document.createElement('div');
-                gridContainer.className = 'grid-container';
-                const grid = document.createElement('div');
-                grid.className = 'grid';
-
-                const startRow = p * rowsPerPage;
-                for (let row = 0; row < rowsPerPage; row++) {
-                    const lineIndex = startRow + row;
-                    const lineStr = lineIndex < allLines.length ? allLines[lineIndex] : '';
-                    const hanging = lineIndex < allHanging.length ? allHanging[lineIndex] : '';
-
-                    for (let col = 0; col < 20; col++) {
-                        const cell = document.createElement('div');
-                        cell.className = 'cell';
-
-                        if (col < lineStr.length) {
-                            const charSpan = document.createElement('span');
-                            charSpan.className = 'char';
-                            charSpan.textContent = lineStr[col];
-                            cell.appendChild(charSpan);
-                        }
-
-                        if (col === 19 && hanging) {
-                            const hangingSpan = document.createElement('span');
-                            hangingSpan.className = 'hanging';
-                            hangingSpan.textContent = hanging;
-                            cell.appendChild(hangingSpan);
-                        }
-
-                        grid.appendChild(cell);
-                    }
-                }
-
-                gridContainer.appendChild(grid);
-                page.appendChild(gridContainer);
-
-                const pageNum = document.createElement('div');
-                pageNum.className = 'page-number';
-                pageNum.textContent = currentPageCount === 1 ? '1' : `${p + 1}/${currentPageCount}`;
-                page.appendChild(pageNum);
-
-                pagesContainer.appendChild(page);
-            }
-
-            // ★修正：1ページ目が完全に埋まるまで（20行まで）はスクロールしない★
-            const totalLinesNow = allLines.length;
-            const currentEditingPageIndex = Math.ceil(totalLinesNow / rowsPerPage) - 1; // 0-based（21行目入力で1になる）
-
-            // 現在編集中のページが前回の自動スクロールページより大きくなったときのみスクロール
-            if (currentEditingPageIndex > lastScrolledPageIndex && pagesContainer.children[currentEditingPageIndex]) {
-                requestAnimationFrame(() => {
-                    pagesContainer.children[currentEditingPageIndex].scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
-                });
-                lastScrolledPageIndex = currentEditingPageIndex;
-            }
-
-            // 初回ロード時や1ページ目に戻ったときは1ページ目を表示
-            if (totalLinesNow <= rowsPerPage && lastScrolledPageIndex !== 0) {
-                if (pagesContainer.children[0]) {
-                    pagesContainer.children[0].scrollIntoView({ behavior: 'auto', block: 'start' });
-                }
-                lastScrolledPageIndex = 0;
-            }
-
-            // 現在の表示ページをジャンプ入力欄に反映
-            updatePageJumpInput();
-
-            previousLineCount = totalLinesNow;
-        }
-
-        function jumpToPage() {
-            const target = parseInt(pageJumpInput.value, 10);
-            if (isNaN(target) || target < 1 || target > currentPageCount) {
-                updatePageJumpInput();
-                return;
-            }
-
-            const targetPage = pagesContainer.children[target - 1];
-            if (targetPage) {
-                targetPage.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                pageJumpInput.value = target;
-                // 手動ジャンプ時は自動スクロールの基準を更新（戻っても問題ないように）
-                lastScrolledPageIndex = target - 1;
-            }
-        }
-
-        pageJumpBtn.addEventListener('click', jumpToPage);
-        pageJumpInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') jumpToPage();
-        });
-
-        // 手動スクロール時もページ番号をリアルタイム更新
-        pagesContainer.addEventListener('scroll', () => {
-            clearTimeout(window.pageJumpTimeout);
-            window.pageJumpTimeout = setTimeout(updatePageJumpInput, 150);
-        });
-
-        titleInput.addEventListener('input', () => { saveData(); renderPaper(); });
-        subtitleInput.addEventListener('input', () => { saveData(); renderPaper(); });
-        authorInput.addEventListener('input', () => { saveData(); renderPaper(); });
-        inputText.addEventListener('input', () => { saveData(); updateCharCount(); renderPaper(); });
-
-        function clearText() {
+        
+        // 全クリア
+        function clearAll() {
             if (confirm('本当にクリアしますか？保存データも削除されます。')) {
                 titleInput.value = '';
                 subtitleInput.value = '';
                 authorInput.value = '';
-                inputText.value = '';
-                localStorage.clear();
-                lastScrolledPageIndex = 0;
+                textInput.value = '';
+                localStorage.removeItem(STORAGE_KEYS.title);
+                localStorage.removeItem(STORAGE_KEYS.subtitle);
+                localStorage.removeItem(STORAGE_KEYS.author);
+                localStorage.removeItem(STORAGE_KEYS.text);
                 updateCharCount();
-                renderPaper();
+                renderPages();
             }
         }
-
-        window.addEventListener('load', () => {
-            loadData();
-            lastScrolledPageIndex = 0;
+        
+        // 文字数更新（改行を除いた実際の文字数を20文字単位で表示）
+        function updateCharCount() {
+            const text = textInput.value;
+            const totalChars = text.replace(/\n/g, '').length; // 改行を除く
+            const lines = Math.ceil(totalChars / 20);
+            const currentLineChars = totalChars % 20 || 20;
+            
+            charCount.textContent = `文字数: ${totalChars} (${lines}行目 ${currentLineChars}/20文字)`;
+        }
+        
+        // ルビ処理（削除 - 常に空配列を返す）
+        function parseRuby(text) {
+            const parts = [];
+            for (let i = 0; i < text.length; i++) {
+                parts.push({ text: text[i], ruby: null });
+            }
+            return parts;
+        }
+        
+        // テキストを行に分割（禁則処理を改善）
+        function parseTextToLines() {
+            const rawText = textInput.value;
+            const inputLines = rawText.split('\n');
+            const allLines = [];
+            const allHanging = [];
+            
+            inputLines.forEach(line => {
+                let pos = 0;
+                let currentLine = [];
+                let i = 0;
+                
+                while (i < line.length) {
+                    const char = line[i];
+                    
+                    // 現在の行に文字を追加
+                    currentLine.push({ char: char, ruby: null });
+                    pos++;
+                    i++;
+                    
+                    // 20文字に達した場合
+                    if (pos === COLS_PER_PAGE) {
+                        let hanging = '';
+                        
+                        // 次の文字（21文字目）が禁則文字かチェック
+                        if (i < line.length && KINSOKU_HANGING.includes(line[i])) {
+                            hanging = line[i];
+                            i++; // 禁則文字を消費（次の行には含めない）
+                        }
+                        
+                        allLines.push(currentLine);
+                        allHanging.push(hanging);
+                        currentLine = [];
+                        pos = 0;
+                    }
+                }
+                
+                // 行末の処理
+                if (currentLine.length > 0 || line.length === 0) {
+                    allLines.push(currentLine);
+                    allHanging.push('');
+                }
+            });
+            
+            return { allLines, allHanging };
+        }
+        
+        // ページ要素作成
+        function createPageElement(pageIndex, pageData) {
+            const { title, subtitle, author, lines, hangings, pageNum, totalPages } = pageData;
+            
+            const page = document.createElement('div');
+            page.className = 'page';
+            
+            // ヘッダー
+            const header = document.createElement('div');
+            header.className = 'page-header';
+            if (title) {
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'page-title';
+                titleDiv.textContent = title;
+                titleDiv.style.color = '#000000';
+                header.appendChild(titleDiv);
+            }
+            if (subtitle) {
+                const subtitleDiv = document.createElement('div');
+                subtitleDiv.className = 'page-subtitle';
+                subtitleDiv.textContent = subtitle;
+                subtitleDiv.style.color = '#000000';
+                header.appendChild(subtitleDiv);
+            }
+            page.appendChild(header);
+            
+            // グリッド
+            const gridContainer = document.createElement('div');
+            gridContainer.className = 'grid-container';
+            const gridWrapper = document.createElement('div');
+            gridWrapper.className = 'grid-wrapper';
+            
+            // 20行 × 21列のテーブルを作成
+            for (let row = 0; row < ROWS_PER_PAGE; row++) {
+                const gridRow = document.createElement('div');
+                gridRow.className = 'grid-row';
+                
+                for (let col = 0; col < 21; col++) {
+                    const cell = document.createElement('div');
+                    
+                    if (col === 10) {
+                        // 11列目は空白列
+                        cell.className = 'grid-cell empty-column';
+                        
+                        // 1行目と20行目だけ線を表示
+                        if (row === 0) {
+                            cell.classList.add('first-row');
+                        } else if (row === 19) {
+                            cell.classList.add('last-row');
+                        }
+                    } else {
+                        // 通常のセル
+                        cell.className = 'grid-cell';
+                        const actualCol = col > 10 ? col - 1 : col;
+                        const lineIndex = actualCol;
+                        
+                        if (lineIndex < lines.length && row < lines[lineIndex].length) {
+                            const charData = lines[lineIndex][row];
+                            
+                            const charSpan = document.createElement('span');
+                            charSpan.className = 'char';
+                            charSpan.textContent = charData.char;
+                            cell.appendChild(charSpan);
+                        }
+                        
+                        // 禁則処理の文字（追い出し）
+                        if (row === ROWS_PER_PAGE - 1 && lineIndex < hangings.length && hangings[lineIndex]) {
+                            const hangingSpan = document.createElement('div');
+                            hangingSpan.className = 'hanging';
+                            hangingSpan.textContent = hangings[lineIndex];
+                            cell.appendChild(hangingSpan);
+                        }
+                    }
+                    
+                    gridRow.appendChild(cell);
+                }
+                
+                gridWrapper.appendChild(gridRow);
+            }
+            
+            gridContainer.appendChild(gridWrapper);
+            
+            // 11列目に【】を追加（4文字目と17文字目）
+            const emptyColumnOverlay = document.createElement('div');
+            emptyColumnOverlay.style.position = 'absolute';
+            emptyColumnOverlay.style.left = '47.62%';
+            emptyColumnOverlay.style.width = '4.76%';
+            emptyColumnOverlay.style.top = '0';
+            emptyColumnOverlay.style.height = '100%';
+            emptyColumnOverlay.style.pointerEvents = 'none';
+            
+            // 4文字目に】
+            const bracket4 = document.createElement('div');
+            bracket4.style.position = 'absolute';
+            bracket4.style.top = '17.5%';
+            bracket4.style.left = '50%';
+            bracket4.style.transform = 'translateX(-50%) rotate(-90deg)';
+            bracket4.style.fontSize = '24px';
+            bracket4.style.color = '#008000';
+            bracket4.style.fontWeight = 'bold';
+            bracket4.style.whiteSpace = 'nowrap';
+            bracket4.textContent = '】';
+            emptyColumnOverlay.appendChild(bracket4);
+            
+            // 17文字目に【
+            const bracket17 = document.createElement('div');
+            bracket17.style.position = 'absolute';
+            bracket17.style.top = '82.5%';
+            bracket17.style.left = '50%';
+            bracket17.style.transform = 'translateX(-50%) rotate(-90deg)';
+            bracket17.style.fontSize = '24px';
+            bracket17.style.color = '#008000';
+            bracket17.style.fontWeight = 'bold';
+            bracket17.style.whiteSpace = 'nowrap';
+            bracket17.textContent = '【';
+            emptyColumnOverlay.appendChild(bracket17);
+            
+            gridContainer.appendChild(emptyColumnOverlay);
+            
+            page.appendChild(gridContainer);
+            
+            // フッター
+            const footer = document.createElement('div');
+            footer.className = 'page-footer';
+            
+            if (author) {
+                const authorDiv = document.createElement('div');
+                authorDiv.className = 'page-author';
+                authorDiv.textContent = author;
+                footer.appendChild(authorDiv);
+            }
+            
+            const pageNumDiv = document.createElement('div');
+            pageNumDiv.className = 'page-number';
+            pageNumDiv.textContent = totalPages === 1 ? '1' : `${pageNum} / ${totalPages}`;
+            footer.appendChild(pageNumDiv);
+            
+            page.appendChild(footer);
+            
+            return page;
+        }
+        
+        // ページレンダリング
+        function renderPages() {
+            const title = titleInput.value || '';
+            const subtitle = subtitleInput.value || '';
+            const author = authorInput.value || '';
+            const { allLines, allHanging } = parseTextToLines();
+            
+            const totalLines = allLines.length || 1;
+            currentPageCount = Math.max(1, Math.ceil(totalLines / COLS_PER_PAGE));
+            totalPagesSpan.textContent = currentPageCount;
+            jumpInput.max = currentPageCount;
+            
+            allPagesData = [];
+            for (let p = 0; p < currentPageCount; p++) {
+                const startCol = p * COLS_PER_PAGE;
+                const lines = [];
+                const hangings = [];
+                
+                for (let col = 0; col < COLS_PER_PAGE; col++) {
+                    const lineIndex = startCol + col;
+                    lines.push(lineIndex < allLines.length ? allLines[lineIndex] : []);
+                    hangings.push(lineIndex < allHanging.length ? allHanging[lineIndex] : '');
+                }
+                
+                allPagesData.push({
+                    title, subtitle, author, lines, hangings,
+                    pageNum: p + 1,
+                    totalPages: currentPageCount
+                });
+            }
+            
+            virtualContent.innerHTML = '';
+            renderedPages.clear();
+            
+            for (let i = 0; i < currentPageCount; i++) {
+                const pageElement = createPageElement(i, allPagesData[i]);
+                virtualContent.appendChild(pageElement);
+                renderedPages.set(i, pageElement);
+            }
+            
+            // 自動スクロールは完全に無効化
+            // ユーザーが「次ページ先頭へ」「新ページ作成」ボタンで手動移動
+            
+            updateCurrentPage();
+        }
+        
+        // 現在のページ更新
+        function updateCurrentPage() {
+            const pages = Array.from(renderedPages.values());
+            let currentPageIndex = 0;
+            
+            for (let i = 0; i < pages.length; i++) {
+                const rect = pages[i].getBoundingClientRect();
+                const previewRect = previewArea.getBoundingClientRect();
+                
+                // ページの上部がビューポート内にあるか確認
+                if (rect.top <= previewRect.top + 100 && rect.bottom > previewRect.top) {
+                    currentPageIndex = i;
+                    break;
+                }
+            }
+            
+            currentPageDisplay.textContent = currentPageIndex + 1;
+            jumpInput.value = currentPageIndex + 1;
+        }
+        
+        // ページジャンプ
+        function jumpToPage() {
+            const targetPage = parseInt(jumpInput.value, 10);
+            if (targetPage >= 1 && targetPage <= currentPageCount) {
+                const targetElement = renderedPages.get(targetPage - 1);
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+        }
+        
+        // 前ページ先頭へジャンプ
+        function jumpToPrevPage() {
+            const pages = Array.from(renderedPages.values());
+            let currentPageIndex = 0;
+            
+            for (let i = 0; i < pages.length; i++) {
+                const rect = pages[i].getBoundingClientRect();
+                const previewRect = previewArea.getBoundingClientRect();
+                
+                if (rect.top <= previewRect.top + 100 && rect.bottom > previewRect.top) {
+                    currentPageIndex = i;
+                    break;
+                }
+            }
+            
+            const prevPageIndex = currentPageIndex - 1;
+            
+            if (prevPageIndex >= 0) {
+                const targetElement = renderedPages.get(prevPageIndex);
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+        }
+        
+        // 次ページ先頭へジャンプ
+        function jumpToNextPage() {
+            const pages = Array.from(renderedPages.values());
+            let currentPageIndex = 0;
+            
+            for (let i = 0; i < pages.length; i++) {
+                const rect = pages[i].getBoundingClientRect();
+                const previewRect = previewArea.getBoundingClientRect();
+                
+                if (rect.top <= previewRect.top + 100 && rect.bottom > previewRect.top) {
+                    currentPageIndex = i;
+                    break;
+                }
+            }
+            
+            const nextPageIndex = currentPageIndex + 1;
+            
+            if (nextPageIndex < currentPageCount) {
+                const targetElement = renderedPages.get(nextPageIndex);
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+        }
+        
+        // 新ページ作成（現在のテキストの最後に改行を追加して新ページを作る）
+        function createNewPage() {
+            const currentText = textInput.value;
+            const { allLines } = parseTextToLines();
+            const currentLines = allLines.length;
+            const currentPage = Math.ceil(currentLines / COLS_PER_PAGE);
+            const linesInCurrentPage = currentLines % COLS_PER_PAGE || COLS_PER_PAGE;
+            const linesToAdd = COLS_PER_PAGE - linesInCurrentPage;
+            
+            // 現在のページを埋めるために必要な改行を追加
+            if (linesToAdd > 0 && linesToAdd < COLS_PER_PAGE) {
+                const newLines = '\n'.repeat(linesToAdd);
+                textInput.value = currentText + newLines;
+                saveData();
+                renderPages();
+                
+                // 新しく作成されたページにジャンプ
+                setTimeout(() => {
+                    const newPageIndex = currentPage;
+                    const targetElement = renderedPages.get(newPageIndex);
+                    if (targetElement) {
+                        previewArea.scrollTop = 0; // まず一番上に戻す
+                        setTimeout(() => {
+                            targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 50);
+                    }
+                }, 100);
+            } else {
+                // すでにページの最後にいる場合は1行だけ追加
+                textInput.value = currentText + '\n';
+                saveData();
+                renderPages();
+                
+                setTimeout(() => {
+                    const newPageIndex = currentPage;
+                    const targetElement = renderedPages.get(newPageIndex);
+                    if (targetElement) {
+                        previewArea.scrollTop = 0; // まず一番上に戻す
+                        setTimeout(() => {
+                            targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 50);
+                    }
+                }, 100);
+            }
+        }
+        
+        // イベントリスナー
+        titleInput.addEventListener('input', () => { saveData(); renderPages(); });
+        subtitleInput.addEventListener('input', () => { saveData(); renderPages(); });
+        authorInput.addEventListener('input', () => { saveData(); renderPages(); });
+        
+        textInput.addEventListener('keydown', (e) => {
+            // 自動スクロール機能を無効化
+            // ユーザーは「次ページ先頭へ」「新ページ作成」ボタンで手動移動
+        });
+        
+        textInput.addEventListener('input', () => {
+            saveData();
+            updateCharCount();
+            renderPages();
+        });
+        
+        previewArea.addEventListener('scroll', updateCurrentPage);
+        
+        jumpInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') jumpToPage();
+        });
+        
+        // 印刷時の処理
+        window.addEventListener('beforeprint', () => {
+            virtualContent.innerHTML = '';
+            for (let i = 0; i < allPagesData.length; i++) {
+                const pageElement = createPageElement(i, allPagesData[i]);
+                virtualContent.appendChild(pageElement);
+            }
+        });
+        
+        window.addEventListener('afterprint', () => {
+            renderPages();
         });
     </script>
 </body>
